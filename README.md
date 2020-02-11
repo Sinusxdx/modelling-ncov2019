@@ -60,5 +60,8 @@
     │   └── visualization  <- Scripts to create exploratory and results oriented visualizations
     │       └── visualize.py
     │
+    ├── test               <- Unit tests of the code in src.
+    │   └── __init__.py    <- Makes test a Python module
+    │
     └── tox.ini            <- tox file with settings for running tox; see tox.testrun.org
 
