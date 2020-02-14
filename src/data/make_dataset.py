@@ -9,6 +9,7 @@ from src.data.runner.data_runner import Runner
 @click.command()
 @click.argument('output_filepath', type=click.Path())
 @click.option('--node-structure', is_flag=True)
+@click.option('--household-structure', is_flag=True)
 def main(**kwargs):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned json data ready to be analyzed (saved in ../processed).

@@ -19,3 +19,13 @@ class Runner:
 
             msg = 'The node structure has been created'
             logging.info(msg)
+
+        if self._kwargs['household_structure']:
+            msg = 'Creating a household structure...'
+            logging.info(msg)
+
+            created_data = self._structures.create_household()
+            self._file_manager.create_json_file(created_data, 'household_structure')
+
+            msg = 'The household structure has been created'
+            logging.info(msg)
