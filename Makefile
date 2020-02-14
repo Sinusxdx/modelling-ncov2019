@@ -29,9 +29,9 @@ requirements: test_environment
 data: requirements
 	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed
 
-## Make Dummy Dataset
-dummy_data: requirements
-	$(PYTHON_INTERPRETER) src/data/make_dataset.py --dummy data/raw data/processed
+## Make Structures
+create_structures: requirements
+	$(PYTHON_INTERPRETER) src/data/make_dataset.py --node-structure data/processed
 
 ## Delete all compiled Python files
 clean:
