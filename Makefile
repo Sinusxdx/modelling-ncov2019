@@ -31,7 +31,7 @@ data: requirements
 
 ## Make Structures
 create_structures: requirements
-	$(PYTHON_INTERPRETER) src/data/make_dataset.py --node-structure --household-structure --container-structure data/processed
+	$(PYTHON_INTERPRETER) src/data/make_dataset.py --node-structure --household-structure --container-structure data/structures
 
 ## Delete all compiled Python files
 clean:
