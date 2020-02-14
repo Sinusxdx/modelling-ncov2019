@@ -9,7 +9,7 @@ class Runner:
         self._structures = StructCreator()
         self._file_manager = FileCreator(kwargs['output_filepath'])
 
-    def run(self):
+    def structures(self):
         self.node_structure()
         self.household_structure()
         self.container_structure()

@@ -3,17 +3,22 @@ import click
 import logging
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
+from src.data.runner.data_runner import Runner
 
 
 @click.command()
-@click.argument('input_filepath', type=click.Path(exists=True))
 @click.argument('output_filepath', type=click.Path())
-def main(input_filepath, output_filepath):
-    """ Runs data processing scripts to turn raw data from (../raw) into
-        cleaned data ready to be analyzed (saved in ../processed).
-    """
+@click.option('--node-structure', is_flag=True)
+@click.option('--household-structure', is_flag=True)
+@click.option('--container-structure', is_flag=True)
+@click.option('--professions-structure', is_flag=True)
+def main(**kwargs):
+    """ Runs script to create files with structures in the json format."""
     logger = logging.getLogger(__name__)
-    logger.info('making final data set from raw data')
+    logger.info('Creating structures...')
+    runner = Runner(**kwargs)
+    runner.structures()
+    logger.info('Structures have been created')
 
 
 if __name__ == '__main__':
