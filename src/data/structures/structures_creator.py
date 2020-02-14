@@ -31,3 +31,15 @@ class StructCreator:
                             }
 
         return household_structure
+
+    @staticmethod
+    def create_container():
+        container_structure = {
+                                'households': {
+                                    'household_id': 'household_structure'
+                                }, 'nodes': {
+                                    'node_id': 'node_structure'
+                                }
+                            }
+
+        return container_structure

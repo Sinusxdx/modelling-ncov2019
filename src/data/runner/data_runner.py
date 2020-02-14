@@ -29,3 +29,13 @@ class Runner:
 
             msg = 'The household structure has been created'
             logging.info(msg)
+
+        if self._kwargs['container_structure']:
+            msg = 'Creating a container structure...'
+            logging.info(msg)
+
+            created_data = self._structures.create_container()
+            self._file_manager.create_json_file(created_data, 'container_structure')
+
+            msg = 'The container structure has been created'
+            logging.info(msg)
