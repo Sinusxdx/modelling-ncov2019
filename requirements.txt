@@ -14,3 +14,4 @@ pandas
 networkx
 matplotlib
 xlrd >= 1.0.0
+scipy
