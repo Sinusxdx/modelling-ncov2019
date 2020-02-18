@@ -1,12 +1,16 @@
 import string
 
 
-class StructCreator:
-    def __init__(self):
-        pass
-
+class StructureCreator:
     @staticmethod
-    def create_node():
+    def create_structure() -> dict:
+        structure = dict()
+        return structure
+
+
+class NodeCreator(StructureCreator):
+    @staticmethod
+    def create_structure():
         node_structure = {
             'id': 'numeric',
             'age': 'numeric',
@@ -21,8 +25,10 @@ class StructCreator:
 
         return node_structure
 
+
+class HouseholdCreator(StructureCreator):
     @staticmethod
-    def create_household():
+    def create_structure():
         household_structure = {
             'id': 'numeric',
             'members': 'index_list',
@@ -32,8 +38,10 @@ class StructCreator:
 
         return household_structure
 
+
+class ContainerCreator(StructureCreator):
     @staticmethod
-    def create_container():
+    def create_structure():
         container_structure = {
             'households': {
                 'household_id': 'household_structure'
@@ -44,8 +52,10 @@ class StructCreator:
 
         return container_structure
 
+
+class ProfessionsCreator(StructureCreator):
     @staticmethod
-    def create_professions():
+    def create_structure():
         professions_structure = dict()
         profession_structure = {
             'risk': 'numeric',
