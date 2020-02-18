@@ -1,7 +1,7 @@
 import string
 
 
-class StructCreator:
+class StructureCreator:
     def __init__(self):
         pass
 
