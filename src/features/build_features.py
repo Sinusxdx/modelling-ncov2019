@@ -24,3 +24,5 @@ def sample_age_gender() -> Tuple[int, entities.Gender]:
     gender = genders[np.random.choice([0, 1], p=[female_probability, 1-female_probability])]
     return age, gender
 
+def sample_household(n):
+    pass

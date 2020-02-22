@@ -6,7 +6,6 @@ Node_Type = Tuple[Any, Dict[str, Any]]
 
 def generate(population_size: int, decorators: List[Tuple[Callable[..., Node_Type], Tuple[Any]]]) -> nx.MultiGraph:
     """
-
     :param population_size: size of a population to generate
     :param decorators: list of tuples, where each tuple consists of a callable (a function) and a tuple of
     additional arguments that should be passed to this function. The signature of the function should be similar to
@@ -22,3 +21,4 @@ def generate(population_size: int, decorators: List[Tuple[Callable[..., Node_Typ
         for decorator, args in decorators:
             node = decorator(node, *args)
     return graph
+
