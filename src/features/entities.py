@@ -24,6 +24,13 @@ class EmploymentStatus(Enum):
     EMPLOYED = 1
 
 
+class EconomicalGroup(Enum):
+    PRZEDPRODUKCYJNY = 0
+    PRODUKCYJNY_MOBILNY = 1
+    PRODUKCYJNY_NIEMOBILNY = 2
+    POPRODUKCYJNY = 3
+
+
 HOUSEHOLD_NOT_ASSIGNED = -1
 PROFESSION_NOT_ASSIGNED = -1
 SOCIAL_COMPETENCE_NOT_ASSIGNED = -1
@@ -134,6 +141,18 @@ class Node(dict):
     @profession.setter
     def profession(self, profession: int) -> None:
         self[prop_profession] = profession
+
+    @property
+    def economical_group(self) -> EconomicalGroup:
+        if self.age < 18:
+            return EconomicalGroup.PRZEDPRODUKCYJNY
+        if self.age < 45:
+            return EconomicalGroup.PRODUKCYJNY_MOBILNY
+        if self.gender == Gender.FEMALE.value and self.age < 60:
+            return EconomicalGroup.PRODUKCYJNY_NIEMOBILNY
+        if self.gender == Gender.MALE.value and self.age < 65:
+            return EconomicalGroup.PRODUKCYJNY_NIEMOBILNY
+        return EconomicalGroup.POPRODUKCYJNY
 
 
 def add_node(G: nx.Graph, node: Node) -> nx.Graph:
