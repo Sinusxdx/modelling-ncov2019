@@ -9,6 +9,9 @@ Source: Census 2011
 
 TABL. 16. GOSPODARSTWA DOMOWE WEDŁUG SKŁADU RODZINNEGO ORAZ PODREGIONÓW I POWIATÓW W 2011 R.
 
+## households.xlsx
+Programmatically generated dataframe with household index, headcount, and family type.
+
 
 ## household_family_structure.xlsx
 Generated with probabilities per voivodship and quantities from families_per_household.xlsx.
@@ -18,4 +21,5 @@ Source: Census 2011
 
 TABL. 15. GOSPODARSTWA DOMOWE WEDŁUG LICZBY OSÓB ORAZ PODREGIONÓW I POWIATÓW W 2011 R.
 
-Split into 5,6,7-person households by means of an optimization solver. 
+Split into 5,6,7-person households by means of an optimization solver.
+
