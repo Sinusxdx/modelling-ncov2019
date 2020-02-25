@@ -1,4 +1,4 @@
-import networkx as nx
+from typing import List, Dict, Dict
 from enum import Enum
 
 prop_idx = 'idx'
@@ -41,7 +41,7 @@ PUBLIC_TRANSPORT_DURATION_NOT_SET = -1
 
 class Node(dict):
 
-    def __init__(self, node_idx: int, age: int = AGE_NOT_SET,
+    def __init__(self, age: int = AGE_NOT_SET,
                  gender: Gender = Gender.NOT_SET,
                  employment_status: EmploymentStatus = EmploymentStatus.NOT_SET,
                  social_competence: float = SOCIAL_COMPETENCE_NOT_ASSIGNED,
@@ -51,7 +51,6 @@ class Node(dict):
                  profession: int = PROFESSION_NOT_ASSIGNED) -> None:
         """
             Creates a node representing a person.
-            :param node_idx: unique node identifier, mandatory
             :param age: (optional) age of the node, defaults to AGE_NOT_SET
             :param gender: (optional) gender of the node, defaults to Gender.NOT_SET
             :param employment_status: (optional) employement status of the node, defaults to EmploymentStatus.NOT_SET
@@ -64,7 +63,6 @@ class Node(dict):
             :param profession: (optional) profession index of the node, defaults to PROFESSION_NOT_ASSIGNED
             :return: None
         """
-        self[prop_idx] = node_idx
         self[prop_age] = age
         self[prop_gender] = gender.value
         self[prop_employment_status] = employment_status.value
@@ -73,10 +71,6 @@ class Node(dict):
         self[prop_public_transport_duration] = public_transport_duration
         self[prop_household] = household
         self[prop_profession] = profession
-
-    @property
-    def idx(self) -> int:
-        return self[prop_idx]
 
     @property
     def age(self) -> int:
@@ -155,13 +149,3 @@ class Node(dict):
         return EconomicalGroup.POPRODUKCYJNY
 
 
-def add_node(G: nx.Graph, node: Node) -> nx.Graph:
-    """
-        Adds a node with given properties to the given graph G.
-        :param G: graph to add the node to
-        :param node: a node
-        :return: graph G with added node
-    """
-
-    G.add_node(node[prop_idx], data=node)
-    return G
