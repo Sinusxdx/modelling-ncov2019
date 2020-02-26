@@ -1,11 +1,14 @@
 import os
 import pandas as pd
 from pathlib import Path
+from openpyxl import load_workbook
+from contextlib import closing
 
 families_per_household_xlsx = 'households_with_families.xlsx'
 household_family_structure_xlsx = 'household_family_structure.xlsx'
 household_family_structure_old_xlsx = 'household_family_structure_old.xlsx'
 households_count_xlsx = 'households_count.xlsx'
+generations_configuration_xlsx = 'generations_configuration.xlsx'
 
 
 def prepare_family_structure_from_voivodship_old(data_folder):
@@ -91,6 +94,39 @@ def generate_household_indices(data_folder):
                                           family_structure_regex=family_structure_regex))
 
     household_df.set_index('household_index').to_excel(os.path.join(data_folder, 'households.xlsx'))
+
+
+def generate_generations_configuration(voivodship_folder, data_folder):
+    v_config_df = pd.read_excel(os.path.join(voivodship_folder, generations_configuration_xlsx),
+                                sheet_name='preprocessed', header=[0, 1])
+    melted = pd.melt(v_config_df, id_vars=[('Unnamed: 0_level_0', 'family_type'),
+                                           ('Unnamed: 1_level_0', 'relationship'),
+                                           ('Unnamed: 2_level_0', 'house_master')],
+                     var_name=['unit', 'category'],
+                     value_name='total')
+    melted = melted.rename(columns={('Unnamed: 0_level_0', 'family_type'): 'family_type',
+                                    ('Unnamed: 1_level_0', 'relationship'): 'relationship',
+                                    ('Unnamed: 2_level_0', 'house_master'): 'house_master'})
+    melted['young'] = melted.category.isin(['cat1', 'cat4', 'cat5', 'cat7']).astype(int)
+    melted['middle'] = melted.category.isin(['cat2', 'cat4', 'cat6', 'cat7']).astype(int)
+    melted['elderly'] = melted.category.isin(['cat3', 'cat5', 'cat6', 'cat7']).astype(int)
+    melted = melted[melted.category != 'total']
+    melted = melted.drop(columns=['category'])
+    pivoted = pd.pivot_table(melted, columns=['unit'], values='total',
+                             index=['family_type', 'relationship', 'house_master', 'young', 'middle', 'elderly'],
+                             aggfunc='first').reset_index()
+    pivoted.households = pd.to_numeric(pivoted.households, errors='coerce')
+    pivoted.people = pd.to_numeric(pivoted.people, errors='coerce')
+    pivoted = pivoted.fillna(0)
+
+    voivodship_workbook_path = os.path.join(voivodship_folder, generations_configuration_xlsx)
+    book = load_workbook(voivodship_workbook_path)
+    with closing(pd.ExcelWriter(voivodship_workbook_path, engine='openpyxl')) as writer:
+        writer.book = book
+        pivoted.to_excel(writer, sheet_name='processed', index=False)
+        writer.save()
+
+    pivoted.to_excel(os.path.join(data_folder, generations_configuration_xlsx), sheet_name='processed', index=False)
 
 
 if __name__ == '__main__':
