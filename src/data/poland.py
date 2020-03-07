@@ -3,22 +3,16 @@ import pandas as pd
 from pathlib import Path
 from openpyxl import load_workbook
 from contextlib import closing
-
-families_per_household_xlsx = 'households_with_families.xlsx'
-household_family_structure_xlsx = 'household_family_structure.xlsx'
-household_family_structure_old_xlsx = 'household_family_structure_old.xlsx'
-households_count_xlsx = 'households_count.xlsx'
-generations_configuration_xlsx = 'generations_configuration.xlsx'
+from src.data.datasets import *
 
 
 def prepare_family_structure_from_voivodship_old(data_folder):
-    family_structure_input_sheet = 'processed'
     voivodship = os.path.basename(data_folder)[0]
-    families_per_household_df = pd.read_excel(os.path.join(data_folder, families_per_household_xlsx))
+    families_per_household_df = pd.read_excel(os.path.join(data_folder, families_per_household_xlsx.file_path))
 
     family_structure_df = pd.read_excel(
-        os.path.join(data_folder, os.pardir, voivodship, household_family_structure_old_xlsx),
-        sheet_name=family_structure_input_sheet)
+        os.path.join(data_folder, os.pardir, voivodship, household_family_structure_old_xlsx.file_path),
+        sheet_name=household_family_structure_old_xlsx.sheet_name)
 
     columns = family_structure_df.columns[1:]
     for col in columns:
@@ -26,26 +20,27 @@ def prepare_family_structure_from_voivodship_old(data_folder):
             family_structure_df[col] * families_per_household_df.loc[0, col] / family_structure_df[col].sum())\
             .astype(int)
 
-    family_structure_df.to_excel(os.path.join(data_folder, household_family_structure_old_xlsx), index=False)
+    family_structure_df.to_excel(os.path.join(data_folder, household_family_structure_old_xlsx.file_path), index=False)
 
 
 def prepare_family_structure_from_voivodship(data_folder):
     voivodship = os.path.basename(data_folder)[0]
     voivodship_folder = os.path.join(data_folder, os.pardir, voivodship)
-    df = pd.read_excel(os.path.join(voivodship_folder, household_family_structure_xlsx), sheet_name='processed')
+    df = pd.read_excel(os.path.join(voivodship_folder, household_family_structure_xlsx.file_path),
+                       sheet_name=household_family_structure_xlsx.sheet_name)
     df2 = pd.melt(df,
                   id_vars=['family_type', 'relationship', 'house master', 'family_structure_regex'],
                   value_vars=[1, 2, 3, 4, 5, 6, 7], var_name='household_headcount',
                   value_name='probability_within_headcount')
 
-    df2.to_excel(os.path.join(data_folder, household_family_structure_xlsx), index=False)
+    df2.to_excel(os.path.join(data_folder, household_family_structure_xlsx.file_path), index=False)
 
 
 def generate_household_indices_old(data_folder):
     headcount2 = []
     family_type = []
 
-    family_structure_df = pd.read_excel(os.path.join(data_folder, household_family_structure_old_xlsx))
+    family_structure_df = pd.read_excel(os.path.join(data_folder, household_family_structure_old_xlsx.file_path))
 
     for i, row in family_structure_df.iterrows():
         headcount2.extend([row['Household size']] * int(row['One family']))
@@ -61,7 +56,7 @@ def generate_household_indices_old(data_folder):
 
     household_df = pd.DataFrame(
         data={'headcount': headcount2, 'family_type': family_type, 'household_index': list(range(len(headcount2)))})
-    household_df.set_index('household_index').to_excel(os.path.join(data_folder, 'households_old.xlsx'))
+    household_df.set_index('household_index').to_excel(os.path.join(data_folder, households_old_xlsx.file_path))
 
 
 def generate_household_indices(data_folder):
@@ -71,8 +66,8 @@ def generate_household_indices(data_folder):
     house_master = []
     family_structure_regex = []
 
-    family_structure_df = pd.read_excel(os.path.join(data_folder, household_family_structure_xlsx))
-    households_count_df = pd.read_excel(os.path.join(data_folder, households_count_xlsx))
+    family_structure_df = pd.read_excel(os.path.join(data_folder, household_family_structure_xlsx.file_path))
+    households_count_df = pd.read_excel(os.path.join(data_folder, households_count_xlsx.file_path))
 
     for i, hc_row in households_count_df.iterrows():
 
@@ -93,11 +88,11 @@ def generate_household_indices(data_folder):
                                           house_master=house_master,
                                           family_structure_regex=family_structure_regex))
 
-    household_df.set_index('household_index').to_excel(os.path.join(data_folder, 'households.xlsx'))
+    household_df.set_index('household_index').to_excel(os.path.join(data_folder, households_xlsx.file_path))
 
 
 def generate_generations_configuration(voivodship_folder, data_folder):
-    v_config_df = pd.read_excel(os.path.join(voivodship_folder, generations_configuration_xlsx),
+    v_config_df = pd.read_excel(os.path.join(voivodship_folder, generations_configuration_xlsx.file_path),
                                 sheet_name='preprocessed', header=[0, 1])
     melted = pd.melt(v_config_df, id_vars=[('Unnamed: 0_level_0', 'family_type'),
                                            ('Unnamed: 1_level_0', 'relationship'),
@@ -119,14 +114,15 @@ def generate_generations_configuration(voivodship_folder, data_folder):
     pivoted.people = pd.to_numeric(pivoted.people, errors='coerce')
     pivoted = pivoted.fillna(0)
 
-    voivodship_workbook_path = os.path.join(voivodship_folder, generations_configuration_xlsx)
+    voivodship_workbook_path = os.path.join(voivodship_folder, generations_configuration_xlsx.file_path)
     book = load_workbook(voivodship_workbook_path)
     with closing(pd.ExcelWriter(voivodship_workbook_path, engine='openpyxl')) as writer:
         writer.book = book
-        pivoted.to_excel(writer, sheet_name='processed', index=False)
+        pivoted.to_excel(writer, sheet_name=generations_configuration_xlsx.sheet_name, index=False)
         writer.save()
 
-    pivoted.to_excel(os.path.join(data_folder, generations_configuration_xlsx), sheet_name='processed', index=False)
+    pivoted.to_excel(os.path.join(data_folder, generations_configuration_xlsx.file_path),
+                     sheet_name=generations_configuration_xlsx.sheet_name, index=False)
 
 
 if __name__ == '__main__':

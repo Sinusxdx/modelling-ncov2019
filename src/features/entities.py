@@ -1,4 +1,4 @@
-from typing import List, Dict, Dict
+import numpy as np
 from enum import Enum
 
 prop_idx = 'idx'
@@ -10,12 +10,36 @@ prop_public_transport_usage = 'public_transport_usage'
 prop_public_transport_duration = 'public_transport_duration'
 prop_household = 'household_index'
 prop_profession = 'profession'
+columns = [prop_age, prop_gender, prop_employment_status, prop_social_competence, prop_public_transport_usage,
+           prop_public_transport_duration, prop_household, prop_profession]
+data_types = {prop_age: np.int8,
+              prop_gender: np.int8,
+              prop_employment_status: np.int8,
+              prop_social_competence: np.float,
+              prop_public_transport_usage: np.int8,
+              prop_public_transport_duration: np.float,
+              prop_household: np.uint64,
+              prop_profession: np.uint64}
+
+
+class AgeGroup(Enum):
+    YOUNG = 0
+    MIDDLE = 1
+    ELDERLY = 2
 
 
 class Gender(Enum):
     NOT_SET = -1
     MALE = 0
     FEMALE = 1
+
+
+def gender_from_string(string):
+    if string == 'M':
+        return Gender.MALE
+    elif string == 'F':
+        return Gender.FEMALE
+    raise ValueError('Unknown gender {}'.format(string))
 
 
 class EmploymentStatus(Enum):
@@ -148,4 +172,10 @@ class Node(dict):
             return EconomicalGroup.PRODUKCYJNY_NIEMOBILNY
         return EconomicalGroup.POPRODUKCYJNY
 
-
+    @property
+    def age_group(self) -> AgeGroup:
+        if self.age < 30:
+            return AgeGroup.YOUNG
+        if self.age < 60:
+            return AgeGroup.MIDDLE
+        return AgeGroup.ELDERLY
