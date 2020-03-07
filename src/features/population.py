@@ -54,17 +54,123 @@ def list_of_dicts_to_dict_of_lists(list_of_dicts: List[Dict[str, Any]]) -> Dict[
     return {k: [dic[k] for dic in list_of_dicts] for k in list_of_dicts[0]}
 
 
-def generate_households(data_folder: Path, voivodship_folder: Path) -> pd.DataFrame:
+def narrow_housemasters_by_headcount_and_age_group(household_by_master, household_row):
+    """
+    Przy wyborze reprezentanta kierowano się następującymi zasadami:
+    •   gdy mieszkanie zajmowała tylko jedna osoba, ona była reprezentantem;
+    •   gdy  mieszkanie  zajmowali  małżonkowie/partnerzy  z  dziećmi  lub  bez  dzieci,
+    reprezentantem należało wybrać jednego z małżonków/partnerów,
+    •   gdy mieszkanie zajmował rodzic z dzieckiem/dziećmi, reprezentantem był rodzic;
+    •   gdy  mieszkanie  zajmowała  rodzina  trzypokoleniowa  –  należało  wybrać  osobę
+    ze średniego pokolenia;
+    •   gdy  żaden  z  powyższych  warunków  nie  był  spełniony,  reprezentantem  mogła  zostać
+    osoba dorosła mieszkająca w tym mieszkaniu.
+
+    :param household_by_master:
+    :param household_row:
+    :return:
+    """
+
+    elderly = household_row.elderly == 1
+    middle = household_row.middle == 1
+    young = household_row.young == 1
+    masters = household_by_master[household_by_master.Headcount == household_row.household_headcount]
+
+    if elderly and not middle and not young:
+        return masters[masters.elderly == 1]
+    if not elderly and middle and not young:
+        return masters[masters.middle == 1]
+    if not elderly and not middle and young:
+        return masters[masters.young == 1]
+
+    if not elderly:
+        masters = masters[masters.elderly == 0]
+    if not middle:
+        masters = masters[masters.middle == 0]
+    if not young:
+        masters = masters[masters.young == 0]
+
+    if household_row.family_type == 0:
+        # does it have different probability (given we are restricted on other conditions below?)
+        # headcount agreement plus all ages that are present in the household
+        # single person households also falls here
+        return masters
+
+    if household_row.household_headcount == 2:
+        # the only left here are family_type == 1
+        # choose the oldest generation
+        if elderly:
+            return masters[masters.elderly == 1]
+        return masters[masters.middle == 1]
+        # young only covered at the beginning
+
+    if household_row.household_headcount >= 3 and household_row.family_type == 1:
+        # family_type == 1
+        if household_row.relationship == 'Bez osób spoza rodziny':  # MFC+, FCC+, MCC+
+            if elderly and middle and young:
+                # choose middle or elderly - parents are various age?
+                return masters[masters.young == 0]
+            elif elderly and middle and not young:
+                # choose elderly, as the child is middle
+                return masters[masters.elderly == 1]
+            elif not elderly and middle and young:
+                # choose middle
+                return masters[masters.middle == 1]
+            elif elderly and not middle and young:
+                # choose elderly
+                return masters[masters.elderly == 1]
+        elif household_row.relationship == 'Z innymi osobami':
+            # basically any adult
+            # MF+O or MC+O or FC+O - other can be any age
+            return masters
+        else:  # Z krewnymi w linii prostej starszego pokolenia
+            if household_row.house_master == 'członek rodziny':
+                if elderly and middle:
+                    return masters[masters.middle == 1]
+                elif (elderly or middle) and young:
+                    return masters[masters.young == 1]
+            elif household_row.house_master == 'krewny starszego pokolenia':
+                if elderly and (middle or young):
+                    return masters[masters.elderly == 1]
+                elif middle and young:
+                    return masters[masters.middle == 1]
+            else: # inna osoba
+                return masters
+
+    if household_row.household_headcount >= 4 and household_row.family_type == 2:
+        if household_row.relationship == 'Spokrewnione w linii prostej':
+            if household_row.house_master == 'członek rodziny młodszego pokolenia ':
+                if elderly and middle:
+                    return masters[masters.middle == 1]
+                elif (elderly or middle) and young:
+                    return masters[masters.young == 1]
+            elif household_row.house_master == 'członek rodziny starszego pokolenia':
+                if elderly and (middle or young):
+                    return masters[masters.elderly == 1]
+                elif middle and young:
+                    return masters[masters.middle == 1]
+            else: # inna osoba
+                return masters
+        elif household_row.relationship == 'Niespokrewnione w linii prostej':
+            return masters
+
+    raise ValueError(f'Couldn\'t find masters for {household_row}')
+
+
+def generate_households(data_folder: Path, voivodship_folder: Path, reload: bool = False) -> pd.DataFrame:
     """
     Given a population size and the path to a folder with data, generates households for this population.
     :param data_folder: path to a folder with data
-    :param population_size: size of a population; ignored
+    :param voivodship_folder: path to a folder with voivodship data
+    :param reload: whether to reload an output file
     :return: a pandas dataframe with households to lodge the population.
     """
     households_ready_xlsx = data_folder / 'households_ready.xlsx'
-    if not households_ready_xlsx.is_file():
+    if not households_ready_xlsx.is_file() and not reload:
 
         # TODO: another idea - treat them as probabilities?
+        # columns: household_index	household_headcount	family_type	relationship	house_master
+        # family_structure_regex	young	middle	elderly
         households = pd.read_excel(str(data_folder / datasets.households_xlsx.file_name),
                                    sheet_name=datasets.households_xlsx.sheet_name)
 
@@ -75,33 +181,54 @@ def generate_households(data_folder: Path, voivodship_folder: Path) -> pd.DataFr
         masters_age = []
         masters_gender = []
 
+        """
+        family_type	relationship	house_master
+        1	Bez osób spoza rodziny	
+        1	Z krewnymi w linii prostej starszego pokolenia	członek rodziny
+        1	Z krewnymi w linii prostej starszego pokolenia	krewny starszego pokolenia
+        1	Z krewnymi w linii prostej starszego pokolenia	inna osoba
+        1	Z innymi osobami	członek rodziny
+        1	Z innymi osobami	inna osoba
+        2	Spokrewnione w linii prostej	członek rodziny młodszego pokolenia 
+        2	Spokrewnione w linii prostej	członek rodziny starszego pokolenia
+        2	Spokrewnione w linii prostej	inna osoba
+        2	Niespokrewnione w linii prostej	
+        3		
+        0		
+
+        """
+
         # household master
+        # Age	Headcount	Count	Sum in headcount	Probability within headcount	young	middle	elderly
         household_by_master = pd.read_excel(str(voivodship_folder / datasets.households_by_master_xlsx.file_name),
                                             sheet_name=datasets.households_by_master_xlsx.sheet_name)
 
         headcounts = households.household_headcount.unique()
         indices_by_headcount = {
-            headcount: household_by_master[household_by_master.Headcount == headcount].index.tolist() for headcount in headcounts
+            headcount: household_by_master[household_by_master.Headcount == headcount].index.tolist() for headcount in
+            headcounts
         }
         proba_by_headcount = {
-            headcount: household_by_master.iloc[indices]['Probability within headcount'] for headcount, indices in indices_by_headcount.items()
+            headcount: household_by_master.iloc[indices]['Probability within headcount'] for headcount, indices in
+            indices_by_headcount.items()
         }
 
         # family structure
-        families_and_children_df = pd.read_excel(str(data_folder / datasets.families_and_childer_xlsx.file_name),
-                                                 sheet_name=datasets.families_and_childer_xlsx.sheet_name)
+        families_and_children_df = pd.read_excel(str(data_folder / datasets.families_and_children_xlsx.file_name),
+                                                 sheet_name=datasets.families_and_children_xlsx.sheet_name)
 
         for idx, household in households.iterrows():
             # household master
-            indices = indices_by_headcount[household.household_headcount]
+            indices = indices_by_headcount[household.household_headcount]  # ok
             proba = proba_by_headcount[household.household_headcount]
             index = np.random.choice(indices, p=proba)
             masters_age.append(household_by_master.iloc[index].Age)
             masters_gender.append(entities.gender_from_string(household_by_master.iloc[index].Gender).value)
 
             # family structure
-            for family_nb in range(1, household.family_type+1):
-                df_fc = families_and_children_df.loc[families_and_children_df.nb_of_people == household.household_headcount]
+            for family_nb in range(1, household.family_type + 1):
+                df_fc = families_and_children_df.loc[
+                    families_and_children_df.nb_of_people == household.household_headcount]
                 try:
                     final_structure_idx = np.random.choice(df_fc.index.to_list(),
                                                            p=df_fc.prob_with_young_adults_per_headcount)
@@ -147,10 +274,9 @@ def generate(data_folder: Path, population_size: int = 641607) -> pd.DataFrame:
 
     population = __age_gender_population(age_gender_df)
     population[entities.prop_household] = -1
-    # population_indices = population.index.tolist()  # probably not needed
 
     # get indices of households of a specific age, gender
-    df23 = households.groupby(by=['master_age', 'master_gender'], sort=False).size()\
+    df23 = households.groupby(by=['master_age', 'master_gender'], sort=False).size() \
         .reset_index().rename(columns={0: 'total'})
 
     # given a household and its master's age and gender
@@ -160,7 +286,7 @@ def generate(data_folder: Path, population_size: int = 641607) -> pd.DataFrame:
     for idx, df23_row in df23.iterrows():
         if df23_row.master_age == '19 lat i mniej':
             subpopulation = population[population[entities.prop_age].isin((18, 19))
-                                   & (population[entities.prop_gender] == df23_row['master_gender'])].index.tolist()
+                                       & (population[entities.prop_gender] == df23_row['master_gender'])].index.tolist()
         elif df23_row.master_age == '20-24':
             subpopulation = population[population[entities.prop_age].isin((20, 21, 22, 23, 24))
                                        & (population[entities.prop_gender] == df23_row['master_gender'])].index.tolist()
@@ -176,8 +302,12 @@ def generate(data_folder: Path, population_size: int = 641607) -> pd.DataFrame:
             masters_indices = np.random.choice(subpopulation, replace=False, size=df23_row.total)
         except ValueError as e:
             if str(e) == 'Cannot take a larger sample than population when \'replace=False\'':
+                logging.info(f'THere are more masters than people in the population for {df23_row}. '
+                             f'Making all people within this cluster masters.')
                 masters_indices = subpopulation
                 households_indices = np.random.choice(households_indices, replace=False, size=len(masters_indices))
+            else:
+                raise
         population.loc[masters_indices, entities.prop_household] = households_indices
         households.loc[households_indices, 'house_master'] = masters_indices
 
@@ -188,7 +318,8 @@ def generate(data_folder: Path, population_size: int = 641607) -> pd.DataFrame:
 
     # social competence based on previous findings, probably to be changed
     population[entities.prop_social_competence] = generate_social_competence(len(population.index))
-
+    households.to_excel(str(data_folder / datasets.households_xlsx.file_name),
+                        sheet_name=datasets.households_xlsx.sheet_name)
     # TODO: save households (house master index)
     return population
 

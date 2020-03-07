@@ -8,7 +8,7 @@ class XlsxFile:
 
 
 age_gender_xlsx = XlsxFile('age_gender.xlsx', 'processed')
-families_and_childer_xlsx = XlsxFile('families_and_children.xlsx', 'processed')
+families_and_children_xlsx = XlsxFile('families_and_children.xlsx', 'processed')
 families_per_household_xlsx = XlsxFile('families_per_household.xlsx', 'Sheet1')
 generations_configuration_xlsx = XlsxFile('generations_configuration.xlsx', 'processed')
 household_family_structure_xlsx = XlsxFile('household_family_structure.xlsx', 'Sheet1')
