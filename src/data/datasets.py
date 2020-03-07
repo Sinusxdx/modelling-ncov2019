@@ -14,7 +14,7 @@ generations_configuration_xlsx = XlsxFile('generations_configuration.xlsx', 'pro
 household_family_structure_xlsx = XlsxFile('household_family_structure.xlsx', 'Sheet1')
 household_family_structure_old_xlsx = XlsxFile('household_family_structure_old.xlsx', 'Sheet1')
 households_xlsx = XlsxFile('households.xlsx', 'Sheet1')
-households_count_xlsx = XlsxFile('households_count.xlsx', 'Sheet1')
+households_count_xlsx = XlsxFile('households_count.xlsx', 'processed')
 households_old_xlsx = XlsxFile('households_old.xlsx', 'Sheet1')
 
 households_by_master_xlsx = XlsxFile('households_by_master.xlsx', 'House_Master')

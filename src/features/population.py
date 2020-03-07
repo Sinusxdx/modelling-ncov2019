@@ -64,7 +64,7 @@ def generate_households(data_folder: Path, voivodship_folder: Path) -> pd.DataFr
     households_ready_xlsx = data_folder / 'households_ready.xlsx'
     if not households_ready_xlsx.is_file():
 
-        # TODO: another idea - treat them as probabilities
+        # TODO: another idea - treat them as probabilities?
         households = pd.read_excel(str(data_folder / datasets.households_xlsx.file_name),
                                    sheet_name=datasets.households_xlsx.sheet_name)
 
@@ -188,6 +188,8 @@ def generate(data_folder: Path, population_size: int = 641607) -> pd.DataFrame:
 
     # social competence based on previous findings, probably to be changed
     population[entities.prop_social_competence] = generate_social_competence(len(population.index))
+
+    # TODO: save households (house master index)
     return population
 
 
