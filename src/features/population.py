@@ -476,4 +476,4 @@ if __name__ == '__main__':
 
     # KNOWN ISSUES:
     # 1. age is in the range format (30-34, 35-39, etc. for exact values see data/processed/poland/DW/age_gender.xlsx)
-    # 2. some people are homeless (mostly 50-59 year old, to be investigated)
+    # 2. some people are homeless (mostly 60+ years old, to be investigated)
