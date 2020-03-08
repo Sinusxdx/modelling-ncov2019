@@ -130,3 +130,4 @@ dmypy.json
 .idea/
 .~lock.*
 data/simulations/*
+!data/simulations/20200308_0010

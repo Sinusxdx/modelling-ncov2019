@@ -18,3 +18,4 @@ scipy
 openpyxl
 statsmodels
 sklearn
+tqdm

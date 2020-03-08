@@ -19,6 +19,8 @@ households_old_xlsx = XlsxFile('households_old.xlsx', 'Sheet1')
 
 households_by_master_xlsx = XlsxFile('households_by_master.xlsx', 'House_Master')
 
-population_xlsx = XlsxFile('population.xlsx', 'Sheet1')
+output_households_interim_xlsx = XlsxFile('households_interim.xlsx', 'Sheet1')
+output_households_xlsx = XlsxFile('households.xlsx', 'Sheet1')
+output_population_xlsx = XlsxFile('population.xlsx', 'Sheet1')
 production_age = XlsxFile('production_age.xlsx', 'Sheet1')
 
