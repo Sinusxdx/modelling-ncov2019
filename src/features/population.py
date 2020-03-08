@@ -268,6 +268,28 @@ def generate_employment(data_folder, age_gender_pop):
     return vector
 
 
+def _drop_obsolete_columns(df: pd.DataFrame) -> pd.DataFrame:
+    columns = df.columns.tolist()
+    to_drop = [col for col in columns if col not in entities.columns]
+    return df.drop(columns=to_drop)
+
+
+def _age_range_to_age(df: pd.DataFrame) -> pd.DataFrame:
+    idx = df[df.age.str.len() > 2].index.tolist()
+    df.loc[idx, 'age'] = df.loc[idx].age.str.slice(0, 2).astype(int)
+    df.loc[idx, 'age'] += np.random.choice(list(range(0, 5)), size=len(idx))
+    df.age = df.age.astype(int)  # make the whole column as int
+    return df
+
+
+def _fix_homeless(df: pd.DataFrame) -> pd.DataFrame:
+    return df[df[entities.prop_household] != -1]
+
+
+def cleanup(df: pd.DataFrame) -> pd.DataFrame:
+    return _age_range_to_age(_drop_obsolete_columns(_fix_homeless(df)))
+
+
 def generate_population(data_folder: Path, output_folder: Path, households: pd.DataFrame):
     population_ready_xlsx = output_folder / datasets.output_population_xlsx.file_name
     if not population_ready_xlsx.is_file():
@@ -423,6 +445,8 @@ def generate_population(data_folder: Path, output_folder: Path, households: pd.D
             population[entities.prop_employment_status] = generate_employment(data_folder,
                                                                               population[[entities.prop_age,
                                                                                               entities.prop_gender]])
+            logging.info('Cleaning up the population dataframe')
+            population = cleanup(population)
         finally:
             logging.info('Saving a population to a file... ')
             population.to_excel(str(output_folder / datasets.output_population_xlsx.file_name), index=False)

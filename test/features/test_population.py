@@ -149,3 +149,16 @@ class TestPublicTransport(TestCase):
         self.pop[entities.prop_public_transport_usage] = population.generate_public_transport_usage(self.population_size)
         duration = population.generate_public_transport_duration(self.pop[entities.prop_public_transport_usage])
         self.assertEqual(len(duration.index), self.population_size)
+
+
+class TestCleanup(TestCase):
+
+    def test_age_transformation(self):
+        df = pd.read_excel(str(Path(__file__).resolve().parents[0] / 'test_cleanup_age_parsing.xlsx'))
+        result = population._age_range_to_age(df)
+
+        self.assertEqual(int, result[entities.prop_age].dtype)
+        for idx, row in result.iterrows():
+            self.assertGreaterEqual(row.age, row.age_expected)
+            self.assertLess(row.age, row.age_expected + 5)
+
