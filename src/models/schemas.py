@@ -74,7 +74,7 @@ death_probability_schema = Schema({
     CRITICAL: And(Use(float), lambda x: 0.0 <= x <= 1.0),
 })
 
-random_seed_schema = Schema(Or(int, None))
+random_seed_schema = Schema(Or(str, int, None))
 
 infection_model_schemas = {
     INITIAL_CONDITIONS: Schema(Or(initial_conditions_schema1, initial_conditions_schema2)),
@@ -96,7 +96,10 @@ infection_model_schemas = {
     IMPORT_INTENSITY: import_intensity_schema,
     START_TIME: global_time_schema,
     DEATH_PROBABILITY: death_probability_schema,
-    RANDOM_SEED: random_seed_schema
+    RANDOM_SEED: random_seed_schema,
+    LOG_OUTPUTS: Schema(bool),
+    MAX_TIME: global_time_schema,
+    COMMENT: Schema(str)
 }
 
 

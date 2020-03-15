@@ -70,6 +70,12 @@ default_death_probability = {
 
 default_random_seed = 42
 
+default_log_outputs = True
+
+default_max_time = float('inf')
+
+default_comment = ''
+
 defaults = {
     INITIAL_CONDITIONS: default_initial_conditions,
     EPIDEMIC_STATUS: default_epidemic_status,
@@ -84,5 +90,8 @@ defaults = {
     IMPORT_INTENSITY: default_import_intensity,
     START_TIME: default_start_time,
     DEATH_PROBABILITY: default_death_probability,
-    RANDOM_SEED: default_random_seed
+    RANDOM_SEED: default_random_seed,
+    LOG_OUTPUTS: default_log_outputs,
+    MAX_TIME: default_max_time,
+    COMMENT: default_comment
 }

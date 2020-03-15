@@ -8,8 +8,8 @@ import heapq
 import json
 import logging
 import random
+from shutil import copyfile
 from time import time_ns
-import typing
 
 import fire
 from git import Repo
@@ -17,6 +17,7 @@ import pandas as pd
 import scipy.optimize
 import scipy.stats
 from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 from src.models.schemas import *
 from src.models.defaults import *
@@ -33,32 +34,35 @@ class InfectionModel:
                 params_file.read()
             )  # TODO: check whether this should be moved to different place
         self._params = dict()
-        self.event_queue = []
-        self._affected_people = 0
-        self._deaths = 0
         logger.info('Parsing params...')
         for key, schema in infection_model_schemas.items():
             self._params[key] = schema.validate(params.get(key, defaults[key]))
 
-        np.random.seed(self._params[RANDOM_SEED])
-        random.seed(self._params[RANDOM_SEED])
-
-        self._global_time = self._params[START_TIME]
-        logger.info('Setting up data frames...')
         self._df_individuals = None
         self._df_households = None
-        self._set_up_data_frames()
-        self._infection_status = defaultdict(lambda: InfectionStatus.Healthy)
-        self._expected_case_severity = self.draw_expected_case_severity()
+        self._global_time = None
+        self._max_time = None
+        self._expected_case_severity = None
+        self._affected_people = 0
+        self._deaths = 0
+        self.event_queue = []
+        self._fear_factor = {}
         self._infections_dict = {}
         self._progression_times_dict = {}
+        self._infection_status = defaultdict(lambda: InfectionStatus.Healthy)
+        self._set_up_data_frames()
         self.event_schema = event_schema_fun(self._df_individuals)
 
-        logger.info('Filling queue based on initial conditions...')
-        self._fill_queue_based_on_initial_conditions()
-        logger.info('Filling queue based on auxiliary functions...')
-        self._fill_queue_based_on_auxiliary_functions()
-        logger.info('Initialization step is done!')
+
+    @staticmethod
+    def parse_random_seed(random_seed):
+        np.random.seed(random_seed)
+        random.seed(random_seed)
+
+    @property
+    def household_path(self):
+        return os.path.join(self._params[OUTPUT_ROOT_DIR], self._params[EXPERIMENT_ID],
+                            'input_df_households.csv')  # TODO: ensure that households are valid!
 
     def _set_up_data_frames(self) -> None:
         """
@@ -73,13 +77,13 @@ class InfectionModel:
         self._df_individuals.index = self._df_individuals.idx
         logger.info('Set up data frames: Building households df...')
 
-        household_input_path = os.path.join(self._params[OUTPUT_ROOT_DIR], self._params[EXPERIMENT_ID],
-                                            'input_df_households.csv')  # TODO: ensure that households are valid!
-        if os.path.exists(household_input_path):
-            self._df_households = pd.read_csv(household_input_path, index_col=HOUSEHOLD_ID,
+        if os.path.exists(self.household_path):
+            self._df_households = pd.read_csv(self.household_path, index_col=HOUSEHOLD_ID,
                                               converters={ID: ast.literal_eval})
         else:
             self._df_households = pd.DataFrame({ID: self._df_individuals.groupby(HOUSEHOLD_ID)[ID].apply(list)})
+            os.makedirs(os.path.dirname(self.household_path), exist_ok=True)
+            self._df_households.to_csv(self.household_path)
 
     def _fill_queue_based_on_auxiliary_functions(self) -> None:
         """
@@ -153,9 +157,13 @@ class InfectionModel:
                 choice_set = self._df_individuals.index.values
                 for infection_status, cardinality in initial_conditions[CARDINALITIES].items():
                     if cardinality > 0:
-                        selected_rows = np.random.choice(choice_set, cardinality, replace=False)
+
+                        r = range(choice_set.shape[0])
+                        selected_rows_ids = random.sample(r, k=cardinality)
+                        selected_rows = choice_set[selected_rows_ids]
+
                         # now only previously unselected indices can be drawn in next steps
-                        choice_set = np.array(list(set(choice_set) - set(selected_rows)))
+                        choice_set = choice_set[list(set(r) - set(selected_rows))]
                         t_state = _assign_t_state(infection_status)
                         for row in selected_rows:
                             self.append_event(Event(self.global_time, row, t_state, None, INITIAL_CONDITIONS,
@@ -349,7 +357,7 @@ class InfectionModel:
 
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
-        from matplotlib import pyplot as plt
+
         plt.close()
         vals = df_r2.contraction_time.sort_values()
         legend = []
@@ -380,7 +388,6 @@ class InfectionModel:
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
         df_in = self.df_individuals
-        from matplotlib import pyplot as plt
         plt.close()
         lims = [(0, 20, '[0-19]'), (20, 40, '[20-39]'), (40, 50, '[40-49]'), (50, 60, '[50-59]'), (60, 70, '[60-69]'),
                 (70, 80, '[70-79]'), (80, 200, '[80+]')]
@@ -393,7 +400,8 @@ class InfectionModel:
             death_cases = filtered[~filtered.tdeath.isna()].sort_values(by='tdeath').tdeath
             d_cases = death_cases[death_cases < df_r2.contraction_time.max(axis=0)].sort_values()
             d_times = np.arange(len(d_cases))
-            plt.plot(np.append(d_cases, df_r2.contraction_time.max(axis=0)), np.append(d_times, len(d_cases)))
+            plt.plot(np.append(d_cases, df_r2.contraction_time.max(axis=0)
+                               ), np.append(d_times, len(d_cases)))
             legend.append(descr)
 
         plt.legend(legend)
@@ -409,20 +417,18 @@ class InfectionModel:
         os.makedirs(simulation_output_dir)
         self.df_progression_times.to_csv(os.path.join(simulation_output_dir, 'output_df_progression_times.csv'))
         self.df_infections.to_csv(os.path.join(simulation_output_dir, 'output_df_potential_contractions.csv'))
-        self._df_individuals[EXPECTED_CASE_SEVERITY] = pd.Series(self._expected_case_severity)
-        self._df_individuals[INFECTION_STATUS] = pd.Series(self._infection_status)
-        self._df_individuals.to_csv(os.path.join(simulation_output_dir, 'output_df_individuals.csv'))
-        self._df_households.to_csv(os.path.join(simulation_output_dir, 'output_df_households.csv'))
+        df_output_individuals = self._df_individuals.copy()
+        df_output_individuals[EXPECTED_CASE_SEVERITY] = pd.Series(self._expected_case_severity)
+        df_output_individuals[INFECTION_STATUS] = pd.Series(self._infection_status)
+        df_output_individuals.to_csv(os.path.join(simulation_output_dir, 'output_df_individuals.csv'))
         if self._params[SAVE_INPUT_DATA]:
-            from shutil import copyfile
+
             copyfile(self.df_individuals_path, os.path.join(simulation_output_dir,
                                                             f'input_{os.path.basename(self.df_individuals_path)}'))
+            copyfile(self.household_path, os.path.join(simulation_output_dir,
+                                                       f'input_{os.path.basename(self.household_path)}'))
             copyfile(self.params_path, os.path.join(simulation_output_dir,
                                                     f'input_{os.path.basename(self.params_path)}'))
-        household_input_path = os.path.join(self._params[OUTPUT_ROOT_DIR], self._params[EXPERIMENT_ID],
-                                            'input_df_households.csv')
-        if not os.path.exists(household_input_path):
-            self._df_households.to_csv(household_input_path)
         repo = Repo(config.ROOT_DIR)
         git_active_branch_log = os.path.join(simulation_output_dir, 'git_active_branch_log.txt')
         with open(git_active_branch_log, 'w') as f:
@@ -444,11 +450,10 @@ class InfectionModel:
     def icu_beds(self, simulation_output_dir):
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
-        df_in = self.df_individuals
+        individuals_severity = pd.Series(self._expected_case_severity)
 
-        from matplotlib import pyplot as plt
         plt.close()
-        critical = df_r1[df_in[EXPECTED_CASE_SEVERITY] == ExpectedCaseSeverity.Critical]
+        critical = df_r1[individuals_severity == ExpectedCaseSeverity.Critical]
         plus = critical.t2.values
         deceased = critical[~critical.tdeath.isna()]
         survived = critical[critical.tdeath.isna()]
@@ -484,7 +489,6 @@ class InfectionModel:
     def store_bins(self, simulation_output_dir):
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
-        from matplotlib import pyplot as plt
         plt.close()
         bins = np.arange(1 + df_r2.contraction_time.max())
         cond1 = df_r2.contraction_time[df_r2.kernel == 'import_intensity'].sort_values()
@@ -507,7 +511,6 @@ class InfectionModel:
     def store_graphs(self, simulation_output_dir):
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
-        from matplotlib import pyplot as plt
         vals = df_r2.contraction_time.sort_values()
         plt.plot(vals, np.arange(len(vals)))
         cond1 = df_r2.contraction_time[df_r2.kernel == 'import_intensity'].sort_values()
@@ -520,6 +523,7 @@ class InfectionModel:
         ho_cases = hospitalized_cases[hospitalized_cases < df_r2.contraction_time.max(axis=0)].sort_values()
         death_cases = df_r1[~df_r1.tdeath.isna()].sort_values(by='tdeath').tdeath
         d_cases = death_cases[death_cases < df_r2.contraction_time.max(axis=0)].sort_values()
+
         plt.plot(ho_cases, np.arange(len(ho_cases)))
         plt.plot(d_cases, np.arange(len(d_cases)))
         plt.legend(['Total # infected', '# Imported cases', 'Infected through constant kernel',
@@ -530,13 +534,14 @@ class InfectionModel:
     def store_semilogy(self, simulation_output_dir):
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
-        from matplotlib import pyplot as plt
         plt.close()
         vals = df_r2.contraction_time.sort_values()
+
         plt.semilogy(vals, np.arange(len(vals)))
         cond1 = df_r2.contraction_time[df_r2.kernel == 'import_intensity'].sort_values()
         cond2 = df_r2.contraction_time[df_r2.kernel == 'constant'].sort_values()
         cond3 = df_r2.contraction_time[df_r2.kernel == 'household'].sort_values()
+
         plt.semilogy(cond1, np.arange(len(cond1)))
         plt.semilogy(cond2, np.arange(len(cond2)))
         plt.semilogy(cond3, np.arange(len(cond3)))
@@ -551,15 +556,71 @@ class InfectionModel:
         plt.title(f'simulation of covid19 dynamics\n {self._params[EXPERIMENT_ID]}')
         plt.savefig(os.path.join(simulation_output_dir, 'summary_semilogy.png'))
 
+    def setup_simulation(self):
+        self.event_queue = []
+
+        self._affected_people = 0
+        self._deaths = 0
+        # TODO add more online stats like: self._active_people = 0
+        # TODO  and think how to better group them, ie namedtuple state_stats?
+
+        self._fear_factor = {}
+        self._infection_status = defaultdict(lambda: InfectionStatus.Healthy)
+        self._infections_dict = {}
+        self._progression_times_dict = {}
+
+        self._global_time = self._params[START_TIME]
+        self._max_time = self._params[MAX_TIME]
+        self._expected_case_severity = self.draw_expected_case_severity()
+
     def run_simulation(self):
-        with tqdm(total=None) as pbar:
-            while self.pop_and_apply_event():
-                affected = self.affected_people
-                pbar.set_description(f'Time: {self.global_time:.2f} - Affected: {affected}') # - fear constant: {self.fear("constant"):.3f} - fear household: {self.fear("household"):.3f}')
-                if affected >= self.stop_simulation_threshold:
-                    logging.info(f"The outbreak reached a high number {self.stop_simulation_threshold}")
-                    break
-        self.log_outputs()
+        def _inner_loop(iter):
+            with tqdm(total=None) as pbar:
+                while self.pop_and_apply_event():
+                    affected = self.affected_people
+                    pbar.set_description(f'Iter: {iter} - Time: {self.global_time:.2f} - Affected: {affected}') # - fear constant: {self.fear("constant"):.3f} - fear household: {self.fear("household"):.3f}')
+                    if affected >= self.stop_simulation_threshold:
+                        logging.info(f"The outbreak reached a high number {self.stop_simulation_threshold}")
+                        return True
+                return False
+
+        seeds = None
+        if isinstance(self._params[RANDOM_SEED], str):
+            seeds = eval(self._params[RANDOM_SEED])
+        elif isinstance(self._params[RANDOM_SEED], int):
+            seeds = [self._params[RANDOM_SEED]]
+        outbreak_proba = 0.0
+        mean_time_when_outbreak = 0.0
+        mean_affected_when_no_outbreak = 0.0
+        outbreaks = 0
+        for i, seed in enumerate(seeds):
+            self.parse_random_seed(seed)
+            self.setup_simulation()
+            logger.info('Filling queue based on initial conditions...')
+            self._fill_queue_based_on_initial_conditions()
+            logger.info('Filling queue based on auxiliary functions...')
+            self._fill_queue_based_on_auxiliary_functions()
+            logger.info('Initialization step is done!')
+            outbreak = _inner_loop(i + 1)
+            outbreak_proba = (i * outbreak_proba + outbreak) / (i + 1)
+            if outbreak:
+                mean_time_when_outbreak  = (mean_time_when_outbreak * outbreaks + self._global_time) / (outbreaks + 1)
+                outbreaks += 1
+            else:
+                no_outbreaks = i - outbreaks
+                mean_affected_when_no_outbreak = (mean_affected_when_no_outbreak * no_outbreaks + self._affected_people) / (no_outbreaks + 1)
+            if self._params[LOG_OUTPUTS]:
+                self.log_outputs()
+        parsed_comment = self._params[COMMENT]
+        try:
+            parsed_comment = eval(self._params[COMMENT])
+        except:
+            pass
+        logger.info(f'\nExperiment id: {self._params[EXPERIMENT_ID]}'
+                    f'\nExperiment comment: {parsed_comment}'
+                    f'\nOutbreak proba: {outbreak_proba}'
+                    f'\nMean time if outbreak: {mean_time_when_outbreak}'
+                    f'\nMean affected when no outbreak: {mean_affected_when_no_outbreak}')
 
     def append_event(self, event: Event) -> None:
         heapq.heappush(self.event_queue, event)
@@ -589,25 +650,24 @@ class InfectionModel:
                                           self.global_time,
                                           infection_status)
 
-
     def add_potential_contractions_from_transport_kernel(self, id):
         pass
 
+    def fear_factor(self, kernel_id):
+        if kernel_id not in self._fear_factor:
+            fear_factors = self._params[FEAR_FACTORS]
+            self._fear_factor[kernel_id] = fear_factor_schema.validate(fear_factors.get(kernel_id, fear_factors.get(DEFAULT)))
+        return self._fear_factor[kernel_id]
 
     def fear(self, kernel_id) -> float:
-        @lru_cache(maxsize=32)
-        def _internal_fear(kernel_id):
-            fear_factors = self._params[FEAR_FACTORS]
-            fear_factor = fear_factor_schema.validate(fear_factors.get(kernel_id, fear_factors.get(DEFAULT, None)))
-            if not fear_factor:
-                return 1.0
-            f = fear_functions[convert_fear_functions(fear_factor[FEAR_FUNCTION])]
-            limit_value = fear_factor[LIMIT_VALUE]
-            scale = fear_factor[SCALE_FACTOR]
-            weights_deaths = fear_factor[DEATHS_MULTIPLIER]
-            weights_detected = fear_factor[DETECTED_MULTIPLIER]
-            return f, weights_detected, weights_deaths, scale, limit_value
-        f, weights_detected, weights_deaths, scale, limit_value = _internal_fear(kernel_id)
+        if self.fear_factor(kernel_id) == FearFunctions.FearDisabled.value:
+            return 1.0
+
+        f = fear_functions[convert_fear_functions(self.fear_factor(kernel_id)[FEAR_FUNCTION])]
+        limit_value = self.fear_factor(kernel_id)[LIMIT_VALUE]
+        scale = self.fear_factor(kernel_id)[SCALE_FACTOR]
+        weights_deaths = self.fear_factor(kernel_id)[DEATHS_MULTIPLIER]
+        weights_detected = self.fear_factor(kernel_id)[DETECTED_MULTIPLIER]
         detected = self.affected_people
         deaths = self.deaths
         return f(detected, deaths, weights_detected, weights_deaths, scale, limit_value)
@@ -620,7 +680,7 @@ class InfectionModel:
         start = prog_times[T0]
         end = prog_times[T2]
         if end is None:
-            end = start + prog_times[T1] + 14 # TODO: Fix the bug, this should Recovery Time
+            end = start + prog_times[T0] + 14 # TODO: Fix the bug, this should Recovery Time
         total_infection_rate = (end - start) * self.gamma('household')
         household_id = self._df_individuals.loc[id, HOUSEHOLD_ID]
         inhabitants = self._df_households.loc[household_id][ID]
@@ -630,6 +690,11 @@ class InfectionModel:
         if infected == 0:
             return
         possible_choices = possibly_affected_household_members #.index.values
+
+        '''r = range(len(possible_choices))
+        selected_rows_ids = random.sample(r, k=infected)
+        selected_rows = possible_choices[selected_rows_ids]
+        '''
         selected_rows = np.random.choice(possible_choices, infected, replace=False)
         for row in selected_rows:
             person_idx = self._df_individuals.loc[row, ID]
@@ -655,15 +720,14 @@ class InfectionModel:
         if end is None:
             end = prog_times[T2]
         total_infection_rate = (end - start) * self.gamma('constant')
-        infected = np.random.poisson(total_infection_rate, size=1)
+        infected = np.random.poisson(total_infection_rate, size=1)[0]
         if infected == 0:
             return
         possible_choices = self._df_individuals.index.values
         possible_choices = possible_choices[possible_choices != id]
         r = range(possible_choices.shape[0])
-        selected_rows_ids = random.sample(r, k=infected[0])
+        selected_rows_ids = random.sample(r, k=infected)
         selected_rows = possible_choices[selected_rows_ids]
-        #selected_rows = np.random.choice(possible_choices, infected, replace=False)
         for row in selected_rows:
             person_idx = self._df_individuals.loc[row, ID]
             if self._infection_status[person_idx] == InfectionStatus.Healthy:
@@ -679,6 +743,8 @@ class InfectionModel:
             type_ = getattr(event, TYPE)
             time = getattr(event, TIME)
             self._global_time = time
+            if self._global_time > self._max_time:
+                return False
 
             id = getattr(event, PERSON_INDEX)
             initiated_by = getattr(event, INITIATED_BY)
