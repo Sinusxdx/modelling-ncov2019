@@ -8,7 +8,7 @@ import heapq
 import json
 import logging
 import random
-from time import time_ns
+import time
 import psutil
 
 import fire
@@ -579,7 +579,7 @@ class InfectionModel:
         plt.savefig(os.path.join(simulation_output_dir, 'summary_semilogy.png'))
 
     def log_outputs(self):
-        run_id = f'{time_ns()}_{self._params[RANDOM_SEED]}'
+        run_id = f'{int(time.monotonic() * 1e9)}_{self._params[RANDOM_SEED]}'
         simulation_output_dir = os.path.join(self._params[OUTPUT_ROOT_DIR],
                                              self._params[EXPERIMENT_ID],
                                              run_id)
