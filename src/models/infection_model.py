@@ -47,8 +47,9 @@ class InfectionModel:
             self.df_households_path = default_household_input_path
         np.random.seed(self._params[RANDOM_SEED])
         random.seed(self._params[RANDOM_SEED])
-
         self._global_time = self._params[START_TIME]
+        self._max_time = self._params[MAX_TIME]
+
         logger.info('Setting up data frames...')
         self._df_individuals = None
         self._df_households = None
@@ -320,7 +321,7 @@ class InfectionModel:
         start = prog_times[T0]
         end = prog_times[T2]
         if end is None:
-            end = start + prog_times[T1] + 14 # TODO: Fix the bug, this should Recovery Time
+            end = start + prog_times[T0] + 14 # TODO: Fix the bug, this should Recovery Time
         total_infection_rate = (end - start) * self.gamma('household')
         household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
         inhabitants = self._df_households.loc[household_id][ID]
@@ -329,7 +330,7 @@ class InfectionModel:
                               len(possibly_affected_household_members))[0]
         if infected == 0:
             return
-        possible_choices = possibly_affected_household_members #.index.values
+        possible_choices = possibly_affected_household_members
         selected_rows = np.random.choice(possible_choices, infected, replace=False)
         for row in selected_rows:
             person_idx = self._df_individuals.loc[row, ID]
@@ -353,13 +354,13 @@ class InfectionModel:
         if end is None:
             end = prog_times[T2]
         total_infection_rate = (end - start) * self.gamma('constant')
-        infected = np.random.poisson(total_infection_rate, size=1)
+        infected = np.random.poisson(total_infection_rate, size=1)[0]
         if infected == 0:
             return
         possible_choices = self._df_individuals.index.values
         possible_choices = possible_choices[possible_choices != person_id]
         r = range(possible_choices.shape[0])
-        selected_rows_ids = random.sample(r, k=infected[0])
+        selected_rows_ids = random.sample(r, k=infected)
         selected_rows = possible_choices[selected_rows_ids]
         for row in selected_rows:
             person_idx = self._df_individuals.loc[row, ID]
@@ -484,7 +485,7 @@ class InfectionModel:
             legend.append('Trend line for # hospitalized cases')
         if plot_doubling(d_cases):
             legend.append('Trend line for # deceased cases')
-        plt.legend(legend)
+        plt.legend(legend, loc='upper left')
         plt.title(f'Doubling times for simulation of covid19 dynamics\n {self._params[EXPERIMENT_ID]}')
         plt.savefig(os.path.join(simulation_output_dir, 'doubling_times.png'))
 
@@ -506,7 +507,7 @@ class InfectionModel:
             plt.plot(np.append(d_cases, df_r2.contraction_time.max(axis=0)), np.append(d_times, len(d_cases)))
             legend.append(descr)
 
-        plt.legend(legend)
+        plt.legend(legend, loc='upper left')
         experiment_id = self._params[EXPERIMENT_ID]
         plt.title(f'cumulative deceased cases per age group \n {experiment_id}')
         plt.savefig(os.path.join(simulation_output_dir, 'deceased_cases_age_analysis.png'))
@@ -515,7 +516,7 @@ class InfectionModel:
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
         plt.close()
-        bins = np.arange(1 + df_r2.contraction_time.max())
+        bins = np.arange(np.minimum(730, 1 + df_r2.contraction_time.max()))
         cond1 = df_r2.contraction_time[df_r2.kernel == 'import_intensity'].sort_values()
         cond2 = df_r2.contraction_time[df_r2.kernel == 'constant'].sort_values()
         cond3 = df_r2.contraction_time[df_r2.kernel == 'household'].sort_values()
@@ -529,7 +530,8 @@ class InfectionModel:
         ho_cases.hist(alpha=0.7, histtype='stepfilled', bins=bins)
         d_cases.hist(alpha=0.9, histtype='stepfilled', bins=bins)
         plt.legend(['# Imported cases', 'Infected through constant kernel',
-                    'Infected through household kernel', '# hospitalized cases', '# deceased cases'])
+                    'Infected through household kernel', '# hospitalized cases', '# deceased cases'],
+                   loc='upper left')
         plt.title(f'1 day binning of simulated covid19\n {self._params[EXPERIMENT_ID]}')
         plt.savefig(os.path.join(simulation_output_dir, 'bins.png'))
 
@@ -551,7 +553,8 @@ class InfectionModel:
         plt.plot(ho_cases, np.arange(1, 1 + len(ho_cases)))
         plt.plot(d_cases, np.arange(1, 1 + len(d_cases)))
         plt.legend(['Total # infected', '# Imported cases', 'Infected through constant kernel',
-                    'Infected through household kernel', '# hospitalized cases', '# deceased cases'])
+                    'Infected through household kernel', '# hospitalized cases', '# deceased cases'],
+                   loc='upper left')
         plt.title(f'simulation of covid19 dynamics\n {self._params[EXPERIMENT_ID]}')
         plt.savefig(os.path.join(simulation_output_dir, 'summary.png'))
 
@@ -574,7 +577,8 @@ class InfectionModel:
         plt.semilogy(ho_cases, np.arange(1, 1 + len(ho_cases)))
         plt.semilogy(d_cases, np.arange(1, 1 + len(d_cases)))
         plt.legend(['Total # infected', '# Imported cases', 'Infected through constant kernel',
-                    'Infected through household kernel', '# hospitalized cases', '# deceased cases'])
+                    'Infected through household kernel', '# hospitalized cases', '# deceased cases'],
+                    loc='upper left')
         plt.title(f'simulation of covid19 dynamics\n {self._params[EXPERIMENT_ID]}')
         plt.savefig(os.path.join(simulation_output_dir, 'summary_semilogy.png'))
 
@@ -696,7 +700,8 @@ class InfectionModel:
             type_ = getattr(event, TYPE)
             time = getattr(event, TIME)
             self._global_time = time
-
+            if self._global_time > self._max_time:
+                return False
             person_id = getattr(event, PERSON_INDEX)
             initiated_by = getattr(event, INITIATED_BY)
             initiated_through = getattr(event, INITIATED_THROUGH)
