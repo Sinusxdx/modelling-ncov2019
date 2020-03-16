@@ -379,7 +379,11 @@ class InfectionModel:
         if EMPLOYMENT_STATUS in self._df_individuals.columns:
             if self._df_individuals.loc[person_id, EMPLOYMENT_STATUS] > 0:
                 self.add_potential_contractions_from_employment_kernel(person_id)
-        if len(self._df_households.loc[self._df_individuals.loc[person_id, HOUSEHOLD_ID]][ID]) > 1:
+        household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
+        logger.debug(f'person_id: {person_id}')
+        logger.debug(f'household_id: {household_id}')
+        logger.debug(f'content of the household: {self._df_households.loc[household_id]}')
+        if len(self._df_households.loc[household_id][ID]) > 1:
             self.add_potential_contractions_from_household_kernel(person_id)
         self.add_potential_contractions_from_friendship_kernel(person_id)
         self.add_potential_contractions_from_sporadic_kernel(person_id)
@@ -755,6 +759,6 @@ if __name__ == '__main__':
     pid = os.getpid()
     ps = psutil.Process(pid)
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(level=logging.INFO, format=log_fmt)
+    logging.basicConfig(level=logging.DEBUG, format=log_fmt)
     pd.set_option('display.max_columns', None)
     fire.Fire(InfectionModel)
