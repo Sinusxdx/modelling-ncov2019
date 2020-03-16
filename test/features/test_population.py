@@ -53,7 +53,7 @@ class TestNodesToDataFrame(TestCase):
 
     def test_should_convert_LD_to_DL(self):
         ld = [dict(a=1, b=2), dict(a=2, b=3)]
-        dl = population.list_of_dicts_to_dict_of_lists(ld)
+        dl = population._list_of_dicts_to_dict_of_lists(ld)
 
         self.assertEqual(2, len(dl.keys()))
         self.assertIn('a', dl.keys())

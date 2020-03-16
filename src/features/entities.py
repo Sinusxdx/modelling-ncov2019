@@ -10,6 +10,7 @@ prop_public_transport_usage = 'public_transport_usage'
 prop_public_transport_duration = 'public_transport_duration'
 prop_household = 'household_index'
 prop_profession = 'profession'
+
 columns = [prop_age, prop_gender, prop_employment_status, prop_social_competence, prop_public_transport_usage,
            prop_public_transport_duration, prop_household, prop_profession]
 data_types = {prop_age: np.int8,
@@ -32,6 +33,9 @@ class Gender(Enum):
     NOT_SET = -1
     MALE = 0
     FEMALE = 1
+
+
+GENDERS = [Gender.FEMALE, Gender.MALE]
 
 
 def gender_from_string(string):
@@ -63,7 +67,54 @@ PUBLIC_TRANSPORT_USAGE_NOT_SET = -1
 PUBLIC_TRANSPORT_DURATION_NOT_SET = -1
 
 
-class Node(dict):
+class BasicNode(dict):
+
+    def __init__(self, idx: int, age: int = AGE_NOT_SET,
+                 gender: Gender = Gender.NOT_SET,
+                 household: int = HOUSEHOLD_NOT_ASSIGNED) -> None:
+        """
+        Creates a node representing a person.
+        :param age: (optional) age of the node, defaults to AGE_NOT_SET
+        :param gender: (optional) gender of the node, defaults to Gender.NOT_SET
+        :param household: (optional) household index of the node, defaults to HOUSEHOLD_NOT_ASSIGNED
+        :return: None
+        """
+        super().__init__()
+        self[prop_idx] = idx
+        self[prop_age] = age
+        self[prop_gender] = gender.value
+        self[prop_household] = household
+
+    @property
+    def idx(self) -> int:
+        return self[prop_idx]
+
+    @property
+    def age(self) -> int:
+        return self[prop_age]
+
+    @age.setter
+    def age(self, age: int) -> None:
+        self[prop_age] = age
+
+    @property
+    def gender(self) -> int:
+        return self[prop_gender]
+
+    @gender.setter
+    def gender(self, gender: Gender) -> None:
+        self[prop_gender] = gender.value
+
+    @property
+    def household(self) -> int:
+        return self[prop_household]
+
+    @household.setter
+    def household(self, household: int) -> None:
+        self[prop_household] = household
+
+
+class Node(BasicNode):
 
     def __init__(self, age: int = AGE_NOT_SET,
                  gender: Gender = Gender.NOT_SET,
@@ -87,30 +138,12 @@ class Node(dict):
             :param profession: (optional) profession index of the node, defaults to PROFESSION_NOT_ASSIGNED
             :return: None
         """
-        self[prop_age] = age
-        self[prop_gender] = gender.value
+        super().__init__(0, age, gender, household)
         self[prop_employment_status] = employment_status.value
         self[prop_social_competence] = social_competence
         self[prop_public_transport_usage] = public_transport_usage
         self[prop_public_transport_duration] = public_transport_duration
-        self[prop_household] = household
         self[prop_profession] = profession
-
-    @property
-    def age(self) -> int:
-        return self[prop_age]
-
-    @age.setter
-    def age(self, age: int) -> None:
-        self[prop_age] = age
-
-    @property
-    def gender(self) -> int:
-        return self[prop_gender]
-
-    @gender.setter
-    def gender(self, gender: Gender) -> None:
-        self[prop_gender] = gender.value
 
     @property
     def employment_status(self) -> int:
@@ -143,14 +176,6 @@ class Node(dict):
     @public_transport_duration.setter
     def public_transport_duration(self, public_transport_duration: float) -> None:
         self[prop_public_transport_duration] = public_transport_duration
-
-    @property
-    def household(self) -> int:
-        return self[prop_household]
-
-    @household.setter
-    def household(self, household: int) -> None:
-        self[prop_household] = household
 
     @property
     def profession(self) -> int:

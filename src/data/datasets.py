@@ -24,3 +24,7 @@ output_households_xlsx = XlsxFile('households.xlsx', 'Sheet1')
 output_population_xlsx = XlsxFile('population.xlsx', 'Sheet1')
 production_age = XlsxFile('production_age.xlsx', 'Sheet1')
 
+households_headcount_ac_xlsx_raw = XlsxFile('households_headcount_ac.xlsx', 'Tabl3')
+households_headcount_ac_xlsx = XlsxFile('households_headcount_ac.xlsx', 'processed')
+
+

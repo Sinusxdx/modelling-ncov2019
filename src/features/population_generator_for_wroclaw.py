@@ -11,6 +11,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 from src.features import entities
 from src.data import datasets
+from src.features.population_generator_common import _age_gender_population
 
 
 def get_distribution(distribution):
@@ -42,14 +43,6 @@ def generate_social_competence(sample_size, distribution_name='norm', loc=0, sca
     """
     x = sample_from_distribution(sample_size, distribution_name, loc=loc, scale=scale)
     return MinMaxScaler().fit_transform(x.reshape(-1, 1))
-
-
-def nodes_to_dataframe(nodes: List[entities.Node]) -> Dict[str, List]:
-    return pd.DataFrame(data=list_of_dicts_to_dict_of_lists(nodes))
-
-
-def list_of_dicts_to_dict_of_lists(list_of_dicts: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
-    return {k: [dic[k] for dic in list_of_dicts] for k in list_of_dicts[0]}
 
 
 def narrow_housemasters_by_headcount_and_age_group(household_by_master, household_row):
@@ -227,16 +220,6 @@ def generate_households(data_folder: Path, voivodship_folder: Path, output_folde
         households = pd.read_excel(str(households_ready_xlsx))
 
     return households
-
-
-def _age_gender_population(age_gender_df: pd.DataFrame) -> pd.DataFrame:
-    ages = []
-    genders = []
-    for idx, row in age_gender_df.iterrows():
-        ages.extend([row.Age] * row.Total)
-        genders.extend([entities.Gender.MALE.value] * row.Males)
-        genders.extend([entities.Gender.FEMALE.value] * row.Females)
-    return pd.DataFrame(data={entities.prop_age: ages, entities.prop_gender: genders})
 
 
 def generate_public_transport_usage(pop_size):
@@ -498,6 +481,3 @@ if __name__ == '__main__':
     # or to generate a new dataset
     # generate(data_folder)
 
-    # KNOWN ISSUES:
-    # 1. age is in the range format (30-34, 35-39, etc. for exact values see data/processed/poland/DW/age_gender.xlsx)
-    # 2. some people are homeless (mostly 60+ years old, to be investigated)
