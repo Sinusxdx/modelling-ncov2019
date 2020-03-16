@@ -88,21 +88,18 @@ class PopulationGenerator:
         return self._draw_from_subpopulation(self.adults_df, adults_count, household_idx, current_index)
 
     def _prepare_simulation_folder(self, simulations_folder):
-        if simulations_folder is None:
-            simulations_folder = project_dir / 'data' / 'simulations' / datetime.now().strftime('%Y%m%d_%H%M') \
-                                 / self.voivodship.name
-        if not simulations_folder.is_dir():
-            simulations_folder.mkdir(parents=True)
+        simulations_folder = simulations_folder / self.voivodship.name
+        simulations_folder.mkdir()
         return simulations_folder
 
-    def run(self, simulation_folder: Optional[Path] = None):
+    def run(self, household_index: int, population_index: int, simulation_folder: Optional[Path] = None) -> Tuple[int, int]:
 
         simulation_folder = self._prepare_simulation_folder(simulation_folder)
 
         nodes: List[BasicNode] = []
         households: Dict[int, List[int]] = {}
-        current_index = 0
-        for idx in tqdm(range(self.number_of_households)):
+        current_index = population_index
+        for idx in tqdm(range(household_index, self.number_of_households + household_index)):
             children_count, adults_count = self._draw_a_household()
             children, current_index = self._draw_children(children_count, idx, current_index)
             adults, current_index = self._draw_adults(adults_count, idx, current_index)
@@ -127,10 +124,23 @@ class PopulationGenerator:
         pdf = nodes_to_dataframe(nodes)
         pdf.to_csv(str(simulation_folder / 'population.csv'), mode='a', header=False, index=False)
         hdf.to_csv(str(simulation_folder / 'households.csv'), mode='a', header=False, index=False)
+        return self.number_of_households + household_index, current_index
+
+
+def prepare_simulations_folder(simulations_folder: Path = None):
+    if simulations_folder is None:
+        simulations_folder = project_dir / 'data' / 'simulations' / datetime.now().strftime('%Y%m%d_%H%M')
+    if not simulations_folder.is_dir():
+        simulations_folder.mkdir()
+    return simulations_folder
 
 
 if __name__ == '__main__':
     voivodships = [x for x in poland_folder.iterdir() if x.is_dir() and len(x.name) == 1]
     # change to subprocesses
-    for item in voivodships:
-        PopulationGenerator(item).run()
+    household_index = 0
+    population_index = 0
+    simulations_folder = prepare_simulations_folder()
+    for i, item in enumerate(voivodships):
+        household_index, population_index = PopulationGenerator(item).run(household_index, population_index,
+                                                                          simulations_folder)
