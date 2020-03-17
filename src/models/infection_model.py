@@ -4,7 +4,6 @@ This is mostly based on references/infection_alg.pdf
 import ast
 from collections import defaultdict
 from functools import (lru_cache, partial)
-import heapq
 import json
 import logging
 import random
@@ -17,26 +16,30 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import scipy.optimize
 import scipy.stats
-from tqdm import tqdm
 
 from src.models.schemas import *
 from src.models.defaults import *
 from src.models.states_and_functions import *
 
-from queue import PriorityQueue
-from threading import Thread
+from queue import (Empty, PriorityQueue)
+from threading import (Thread, Lock)
 
 q = PriorityQueue()
-
+l1 = Lock()
+l2 = Lock()
+l3 = Lock()
+l4 = Lock()
+l5 = Lock()
+infection_status_lock = Lock()
 
 class InfectionModel:
     def __init__(self, params_path: str, df_individuals_path: str, df_households_path: str = '') -> None:
-        num_worker_threads = 4
+        self.num_worker_threads = 10
         self.threads = []
-        for i in range(num_worker_threads):
-            t = Thread(target=self.run_simulation)
-            t.start()
-            self.threads.append(t)
+        #for i in range(num_worker_threads):
+        t = Thread(target=self.simulation_worker)
+        t.start()
+        self.threads.append(t)
         self.params_path = params_path
         self.df_individuals_path = df_individuals_path
         self.df_households_path = df_households_path
@@ -76,11 +79,55 @@ class InfectionModel:
         logger.info('Filling queue based on auxiliary functions...')
         self._fill_queue_based_on_auxiliary_functions()
         logger.info('Initialization step is done!')
+
+    def run_simulation(self):
         q.join()
 
-        # stop workers
+        logger.info('Stop workers')
         for t in self.threads:
             t.join()
+        logger.info('Log outputs')
+        self.log_outputs()
+
+    def update_progression_times(self, person_id, value):
+        l1.acquire()
+        try:
+            self._progression_times_dict[person_id] = value
+        finally:
+            # Always called, even if exception is raised in try block
+            l1.release()
+
+    def get_progression_times(self, person_id):
+        l4.acquire()
+        try:
+            return self._progression_times_dict[person_id]
+        finally:
+            # Always called, even if exception is raised in try block
+            l4.release()
+
+    def append_infection(self, value):
+        l2.acquire()
+        try:
+            self._infections_dict[len(self._infections_dict)] = value
+        finally:
+            # Always called, even if exception is raised in try block
+            l2.release()
+
+    def get_inhabitants(self, person_id):
+        l3.acquire()
+        try:
+            household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
+            inhabitants = self._df_households.loc[household_id][ID]
+            return inhabitants
+        finally:
+            l3.release()
+
+    def set_infection_status(self, person_id, value):
+        infection_status_lock.acquire()
+        try:
+            self._infection_status[person_id] = value
+        finally:
+            infection_status_lock.release()
 
     def _set_up_data_frames(self) -> None:
         """
@@ -310,6 +357,9 @@ class InfectionModel:
         return f(*args, **kwargs)
 
     def add_potential_contractions_from_transport_kernel(self, person_id):
+        """
+        if self._df_individuals.loc[person_id, P_TRANSPORT] > 0:
+        """
         pass
 
     def fear(self, kernel_id) -> float:
@@ -334,14 +384,13 @@ class InfectionModel:
         return self._params[TRANSMISSION_PROBABILITIES][kernel_id] * self.fear(kernel_id)
 
     def add_potential_contractions_from_household_kernel(self, person_id):
-        prog_times = self._progression_times_dict[person_id]
+        prog_times = self.get_progression_times(person_id)
         start = prog_times[T0]
         end = prog_times[T2]
         if end is None:
             end = start + prog_times[T0] + 14 # TODO: Fix the bug, this should Recovery Time
         total_infection_rate = (end - start) * self.gamma('household')
-        household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
-        inhabitants = self._df_households.loc[household_id][ID]
+        inhabitants = self.get_inhabitants(person_id)
         possibly_affected_household_members = list(set(inhabitants) - {person_id})
         infected = np.minimum(np.random.poisson(total_infection_rate, size=1),
                               len(possibly_affected_household_members))[0]
@@ -356,6 +405,8 @@ class InfectionModel:
                 self.append_event(Event(contraction_time, person_idx, TMINUS1, person_id, HOUSEHOLD, self.global_time))
 
     def add_potential_contractions_from_employment_kernel(self, person_id):
+        """            if self._df_individuals.loc[person_id, EMPLOYMENT_STATUS] > 0:
+        """
         pass
 
     def add_potential_contractions_from_sporadic_kernel(self, person_id):
@@ -365,7 +416,7 @@ class InfectionModel:
         pass
 
     def add_potential_contractions_from_constant_kernel(self, person_id):
-        prog_times = self._progression_times_dict[person_id]
+        prog_times = self.get_progression_times(person_id)
         start = prog_times[T0]
         end = prog_times[T1]
         if end is None:
@@ -386,26 +437,25 @@ class InfectionModel:
                 self.append_event(Event(contraction_time, person_idx, TMINUS1, person_id, CONSTANT, self.global_time))
 
     def handle_t0(self, person_id):
+        infection_status_lock.acquire()
         if self._infection_status[person_id] == InfectionStatus.Contraction:
             self._infection_status[person_id] = InfectionStatus.Infectious
         elif self._infection_status[person_id] != InfectionStatus.Infectious:
             raise AssertionError(f'Unexpected state detected: {self._infection_status[person_id]}'
                                  f'person_id: {person_id}')
+        infection_status_lock.release()
         if P_TRANSPORT in self._df_individuals.columns:
-            if self._df_individuals.loc[person_id, P_TRANSPORT] > 0:
-                self.add_potential_contractions_from_transport_kernel(person_id)
+            self.add_potential_contractions_from_transport_kernel(person_id)
         if EMPLOYMENT_STATUS in self._df_individuals.columns:
-            if self._df_individuals.loc[person_id, EMPLOYMENT_STATUS] > 0:
-                self.add_potential_contractions_from_employment_kernel(person_id)
-        household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
-        inhabitants = self._df_households.loc[household_id][ID]
+            self.add_potential_contractions_from_employment_kernel(person_id)
+        inhabitants = self.get_inhabitants(person_id)
         if len(inhabitants) > 1:
             self.add_potential_contractions_from_household_kernel(person_id)
         self.add_potential_contractions_from_friendship_kernel(person_id)
         self.add_potential_contractions_from_sporadic_kernel(person_id)
         self.add_potential_contractions_from_constant_kernel(person_id)
 
-    def generate_disease_progression(self, person_id, features, event_time: float,
+    def generate_disease_progression(self, person_id, event_time: float,
                                      initial_infection_status: InfectionStatus) -> None:
         """Returns list of disease progression events
         "future" disease_progression should be recalculated when the disease will be recognised at the state level
@@ -447,8 +497,8 @@ class InfectionModel:
         else:
             #trecovery =
             pass
-        self._progression_times_dict[person_id] = {ID: person_id, TMINUS1: tminus1, T0: t0, T1: t1, T2: t2,
-                                                   TDEATH: tdeath}
+        progression_times = {ID: person_id, TMINUS1: tminus1, T0: t0, T1: t1, T2: t2, TDEATH: tdeath}
+        self.update_progression_times(person_id, progression_times)
                                                    #TDETECTION: tdetection, TRECOVERY: trecovery, TDEATH: tdeath}
         if initial_infection_status == InfectionStatus.Infectious:
             self.handle_t0(person_id)
@@ -679,53 +729,54 @@ class InfectionModel:
         with open(os.path.join(simulation_output_dir, 'save_state_event_queue.pkl'), 'wb') as f:
             pickle.dump(self.event_queue, f)
 
-    def run_simulation(self):
+    def simulation_worker(self):
         while True:
             event = q.get()
             if self.affected_people >= self.stop_simulation_threshold:
                 logging.info(f"The outbreak reached a high number {self.stop_simulation_threshold}")
+                q.task_done()
                 break
             if not self.process_event(event):
                 logging.info(f"Processing event {event} returned False")
+                q.task_done()
                 break
             q.task_done()
+        # cleaning up priority queue:
+        while not q.empty():
+            q.get_nowait()
+            q.task_done()
 
-    '''
-    def run_simulation(self):
-        with tqdm(total=None) as pbar:
-            while self.pop_and_apply_event():
-                affected = self.affected_people
-                memory_use = ps.memory_info().rss / 1024 / 1024
-                pbar.set_description(f'Time: {self.global_time:.2f} - Affected: {affected}'
-                                     f' - Physical memory use: {memory_use:.2f} MB')
-                if affected >= self.stop_simulation_threshold:
-                    logging.info(f"The outbreak reached a high number {self.stop_simulation_threshold}")
-                    break
-        self.log_outputs()
-    '''
 
     def add_new_infection(self, person_id, infection_status,
                           initiated_by, initiated_through):
-        self._infection_status[person_id] = infection_status
+        self.set_infection_status(person_id, infection_status)
         self._detection_status[person_id] = DetectionStatus.NotDetected
 
-        self._infections_dict[len(self._infections_dict)] = {
+        self.append_infection({
             SOURCE: initiated_by,
             TARGET: person_id,
             CONTRACTION_TIME: self.global_time,
             KERNEL: initiated_through
-        }
-
+        })
         self._affected_people += 1
         self.generate_disease_progression(person_id,
-                                          self._df_individuals.loc[person_id],
                                           self.global_time,
                                           infection_status)
 
     def process_event(self, event):
         type_ = getattr(event, TYPE)
         time = getattr(event, TIME)
-        self._global_time = time
+        l5.acquire()
+        try:
+            if int(time/10) != int(self._global_time/10):
+                logger.info(f'Time: {time:.2f}\tAffected people: {self.affected_people}')
+                if len(self.threads) < self.num_worker_threads:
+                    t = Thread(target=self.simulation_worker)
+                    t.start()
+                    self.threads.append(t)
+            self._global_time = time
+        finally:
+            l5.release()
         if self._global_time > self._max_time:
             return False
         person_id = getattr(event, PERSON_INDEX)
@@ -761,26 +812,27 @@ class InfectionModel:
             self.handle_t0(person_id)
         elif type_ == T1:
             if self._infection_status[person_id] == InfectionStatus.Infectious:
-                self._infection_status[person_id] = InfectionStatus.StayHome
+                self.set_infection_status(person_id, InfectionStatus.StayHome)
         elif type_ == T2:
             if self._infection_status[person_id] in [
                 InfectionStatus.StayHome,
                 InfectionStatus.Infectious
             ]:
-                self._infection_status[person_id] = InfectionStatus.Hospital
+                self.set_infection_status(person_id, InfectionStatus.Hospital)
         elif type_ == TDEATH:
             if self._infection_status[person_id] != InfectionStatus.Death:
-                self._infection_status[person_id] = InfectionStatus.Death
+                self.set_infection_status(person_id, InfectionStatus.Death)
                 self._deaths += 1
         return True
 
     # 'Event', [TIME, PERSON_INDEX, TYPE, INITIATED_BY, INITIATED_THROUGH, ISSUED_TIME])
-    def pop_and_apply_event(self) -> bool:
+    """def pop_and_apply_event(self) -> bool:
         try:
             event = heapq.heappop(self.event_queue)
             return self.process_event(event)
         except IndexError:
             return False
+    """
 
 
 logger = logging.getLogger(__name__)
