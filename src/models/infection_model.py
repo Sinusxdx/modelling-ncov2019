@@ -22,24 +22,69 @@ from src.models.defaults import *
 from src.models.states_and_functions import *
 
 from queue import (Empty, PriorityQueue)
-from threading import (Thread, Lock)
+#from threading import (Thread, Lock)
+from multiprocessing import (Lock, Process, Manager, Pool)
+from multiprocessing.managers import SyncManager
 
-q = PriorityQueue()
-l1 = Lock()
-l2 = Lock()
-l3 = Lock()
-l4 = Lock()
-l5 = Lock()
-infection_status_lock = Lock()
+
+class MyManager(SyncManager):
+    pass
+
+
+MyManager.register("PriorityQueue", PriorityQueue)  # Register a shared PriorityQueue
+
+
+def Manager_():
+    m = MyManager()
+    m.start()
+    return m
+
+m = Manager_()
+q = m.PriorityQueue()  # This is process-safe
+self__infection_status = m.dict()  # defaultdict(lambda: InfectionStatus.Healthy)
+self__detection_status = m.dict()  # defaultdict(lambda: default_detection_status)
+self__infections_dict = m.dict()
+self__progression_times_dict = m.dict()
+self__params = m.dict()
+l1 = m.Lock()
+l2 = m.Lock()
+l3 = m.Lock()
+l4 = m.Lock()
+l5 = m.Lock()
+infection_status_lock = m.Lock()
+queue_lock = m.Lock()
+
+def multiprocessing_init(l1_: Lock, l2_: Lock, l3_: Lock, l4_: Lock, l5_: Lock, infection_status_lock_: Lock,
+                         queue_lock_: Lock) -> None:
+    global l1
+    global l2
+    global l3
+    global l4
+    global l5
+    global infection_status_lock
+    global queue_lock
+    l1 = l1_
+    l2 = l2_
+    l3 = l3_
+    l4 = l4_
+    l5 = l5_
+    infection_status_lock = infection_status_lock_
+    queue_lock = queue_lock_
+
 
 class InfectionModel:
     def __init__(self, params_path: str, df_individuals_path: str, df_households_path: str = '') -> None:
-        self.num_worker_threads = 10
-        self.threads = []
+        self.num_worker_threads = 1
+        #self.threads = []
+        #self.processes = []
+
         #for i in range(num_worker_threads):
-        t = Thread(target=self.simulation_worker)
-        t.start()
-        self.threads.append(t)
+        #t = Thread(target=self.simulation_worker)
+        #t.start()
+        #for i in range(self.num_worker_threads):
+
+        #self.threads.append(t)
+
         self.params_path = params_path
         self.df_individuals_path = df_individuals_path
         self.df_households_path = df_households_path
@@ -48,7 +93,6 @@ class InfectionModel:
             params = json.loads(
                 params_file.read()
             )  # TODO: check whether this should be moved to different place
-        self._params = dict()
         self.event_queue = []
         self._affected_people = 0
         self._deaths = 0
@@ -68,11 +112,8 @@ class InfectionModel:
         self._df_individuals = None
         self._df_households = None
         self._set_up_data_frames()
-        self._infection_status = defaultdict(lambda: InfectionStatus.Healthy)
-        self._detection_status = defaultdict(lambda: default_detection_status)
+        logger.info('drawing expected case severity')
         self._expected_case_severity = self.draw_expected_case_severity()
-        self._infections_dict = {}
-        self._progression_times_dict = {}
 
         logger.info('Filling queue based on initial conditions...')
         self._fill_queue_based_on_initial_conditions()
@@ -80,54 +121,67 @@ class InfectionModel:
         self._fill_queue_based_on_auxiliary_functions()
         logger.info('Initialization step is done!')
 
+
+        #with Pool(initializer=multiprocessing_init,
+        #          initargs=(l1, l2, l3, l4, l5, infection_status_lock, queue_lock)) as p:
+        #    p.map(self.simulation_worker, range(3))
+        for i in range(self.num_worker_threads):
+            worker_process = Process(target=self.simulation_worker)
+            """, self__infection_status,
+                                                                          self__detection_status,
+                                                                          self__infections_dict,
+                                                                          self__progression_times_dict,
+                                                                          self__expected_case_severity
+                                                                          )) #, args=(q,))
+            """
+            self.processes.append(worker_process)
+            worker_process.start()
+
     def run_simulation(self):
-        q.join()
+
+        #q.join()
 
         logger.info('Stop workers')
+        for p in self.processes:
+            p.join()
+        '''
         for t in self.threads:
             t.join()
+        '''
         logger.info('Log outputs')
         self.log_outputs()
 
     def update_progression_times(self, person_id, value):
         l1.acquire()
-        try:
-            self._progression_times_dict[person_id] = value
-        finally:
-            # Always called, even if exception is raised in try block
-            l1.release()
+        self__progression_times_dict[person_id] = value
+        l1.release()
 
     def get_progression_times(self, person_id):
         l4.acquire()
-        try:
-            return self._progression_times_dict[person_id]
-        finally:
-            # Always called, even if exception is raised in try block
-            l4.release()
+        value = self__progression_times_dict[person_id]
+        l4.release()
+        return value
 
     def append_infection(self, value):
         l2.acquire()
-        try:
-            self._infections_dict[len(self._infections_dict)] = value
-        finally:
-            # Always called, even if exception is raised in try block
-            l2.release()
+        self__infections_dict[len(self__infections_dict)] = value
+        l2.release()
 
     def get_inhabitants(self, person_id):
         l3.acquire()
-        try:
-            household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
-            inhabitants = self._df_households.loc[household_id][ID]
-            return inhabitants
-        finally:
-            l3.release()
+        household_id = self._df_individuals.loc[person_id, HOUSEHOLD_ID]
+        inhabitants = self._df_households.loc[household_id][ID]
+        l3.release()
+        return inhabitants
+
 
     def set_infection_status(self, person_id, value):
         infection_status_lock.acquire()
-        try:
-            self._infection_status[person_id] = value
-        finally:
-            infection_status_lock.release()
+        self__infection_status[person_id] = value
+        infection_status_lock.release()
+
+    def get_infection_status(self, person_id):
+        return self__infection_status.get(person_id, InfectionStatus.Healthy)
 
     def _set_up_data_frames(self) -> None:
         """
@@ -400,7 +454,7 @@ class InfectionModel:
         selected_rows = np.random.choice(possible_choices, infected, replace=False)
         for row in selected_rows:
             person_idx = self._df_individuals.loc[row, ID]
-            if self._infection_status[person_idx] == InfectionStatus.Healthy:
+            if self.get_infection_status(person_idx) == InfectionStatus.Healthy:
                 contraction_time = np.random.uniform(low=start, high=end)
                 self.append_event(Event(contraction_time, person_idx, TMINUS1, person_id, HOUSEHOLD, self.global_time))
 
@@ -432,18 +486,17 @@ class InfectionModel:
         selected_rows = possible_choices[selected_rows_ids]
         for row in selected_rows:
             person_idx = self._df_individuals.loc[row, ID]
-            if self._infection_status[person_idx] == InfectionStatus.Healthy:
+            if self.get_infection_status(person_idx) == InfectionStatus.Healthy:
                 contraction_time = np.random.uniform(low=start, high=end)
                 self.append_event(Event(contraction_time, person_idx, TMINUS1, person_id, CONSTANT, self.global_time))
 
     def handle_t0(self, person_id):
-        infection_status_lock.acquire()
-        if self._infection_status[person_id] == InfectionStatus.Contraction:
-            self._infection_status[person_id] = InfectionStatus.Infectious
-        elif self._infection_status[person_id] != InfectionStatus.Infectious:
-            raise AssertionError(f'Unexpected state detected: {self._infection_status[person_id]}'
+        current_infection_status = self.get_infection_status(person_id)
+        if current_infection_status == InfectionStatus.Contraction:
+            self.set_infection_status(person_id, InfectionStatus.Infectious)
+        elif current_infection_status != InfectionStatus.Infectious:
+            raise AssertionError(f'Unexpected state detected: {current_infection_status}'
                                  f'person_id: {person_id}')
-        infection_status_lock.release()
         if P_TRANSPORT in self._df_individuals.columns:
             self.add_potential_contractions_from_transport_kernel(person_id)
         if EMPLOYMENT_STATUS in self._df_individuals.columns:
@@ -505,11 +558,11 @@ class InfectionModel:
 
     @property
     def df_infections(self):
-        return pd.DataFrame.from_dict(self._infections_dict, orient='index') #, ignore_index=True) #orient='index', columns=columns)
+        return pd.DataFrame.from_dict(self__infections_dict, orient='index') #, ignore_index=True) #orient='index', columns=columns)
 
     @property
     def df_progression_times(self):
-        return pd.DataFrame.from_dict(self._progression_times_dict, orient='index') #, ignore_index=True)
+        return pd.DataFrame.from_dict(self__progression_times_dict, orient='index') #, ignore_index=True)
 
     def doubling_time(self, simulation_output_dir):
         def doubling(x, y, window=100):
@@ -657,8 +710,8 @@ class InfectionModel:
         self.df_progression_times.to_csv(os.path.join(simulation_output_dir, 'output_df_progression_times.csv'))
         self.df_infections.to_csv(os.path.join(simulation_output_dir, 'output_df_potential_contractions.csv'))
         self._df_individuals[EXPECTED_CASE_SEVERITY] = pd.Series(self._expected_case_severity)
-        self._df_individuals[INFECTION_STATUS] = pd.Series(self._infection_status)
-        self._df_individuals[DETECTION] = pd.Series(self._detection_status)
+        self._df_individuals[INFECTION_STATUS] = pd.Series(self__infection_status)
+        self._df_individuals[DETECTION] = pd.Series(self__detection_status)
         self._df_individuals.to_csv(os.path.join(simulation_output_dir, 'output_df_individuals.csv'))
         self._df_households.to_csv(os.path.join(simulation_output_dir, 'output_df_households.csv'))
         if self._params[SAVE_INPUT_DATA]:
@@ -750,7 +803,7 @@ class InfectionModel:
     def add_new_infection(self, person_id, infection_status,
                           initiated_by, initiated_through):
         self.set_infection_status(person_id, infection_status)
-        self._detection_status[person_id] = DetectionStatus.NotDetected
+        self__detection_status[person_id] = DetectionStatus.NotDetected
 
         self.append_infection({
             SOURCE: initiated_by,
@@ -770,10 +823,10 @@ class InfectionModel:
         try:
             if int(time/10) != int(self._global_time/10):
                 logger.info(f'Time: {time:.2f}\tAffected people: {self.affected_people}')
-                if len(self.threads) < self.num_worker_threads:
-                    t = Thread(target=self.simulation_worker)
-                    t.start()
-                    self.threads.append(t)
+                #if len(self.threads) < self.num_worker_threads:
+                #    t = Thread(target=self.simulation_worker)
+                #    t.start()
+                #    self.threads.append(t)
             self._global_time = time
         finally:
             l5.release()
@@ -787,18 +840,18 @@ class InfectionModel:
         # issued_time = getattr(event, ISSUED_TIME)
         if initiated_by is None and initiated_through != DISEASE_PROGRESSION:
             if type_ == TMINUS1:
-                if self._infection_status[person_id] == InfectionStatus.Healthy:
+                if self.get_infection_status(person_id) == InfectionStatus.Healthy:
                     self.add_new_infection(person_id, InfectionStatus.Contraction,
                                            initiated_by, initiated_through)
             if type_ == T0:
-                if self._infection_status[person_id] in [InfectionStatus.Healthy, InfectionStatus.Contraction]:
+                if self.get_infection_status(person_id) in [InfectionStatus.Healthy, InfectionStatus.Contraction]:
                     self.add_new_infection(person_id, InfectionStatus.Infectious,
                                            initiated_by, initiated_through)
             return True
         if type_ == TMINUS1:
             # check if this action is still valid first
-            initiated_inf_status = self._infection_status[initiated_by]
-            current_status = self._infection_status[person_id]
+            initiated_inf_status = self.get_infection_status(initiated_by)
+            current_status = self.get_infection_status(person_id)
             if current_status == InfectionStatus.Healthy:
                 if initiated_inf_status in active_states:
                     if initiated_through != HOUSEHOLD:
@@ -811,16 +864,16 @@ class InfectionModel:
         elif type_ == T0:
             self.handle_t0(person_id)
         elif type_ == T1:
-            if self._infection_status[person_id] == InfectionStatus.Infectious:
+            if self.get_infection_status(person_id) == InfectionStatus.Infectious:
                 self.set_infection_status(person_id, InfectionStatus.StayHome)
         elif type_ == T2:
-            if self._infection_status[person_id] in [
+            if self.get_infection_status(person_id) in [
                 InfectionStatus.StayHome,
                 InfectionStatus.Infectious
             ]:
                 self.set_infection_status(person_id, InfectionStatus.Hospital)
         elif type_ == TDEATH:
-            if self._infection_status[person_id] != InfectionStatus.Death:
+            if self.get_infection_status(person_id) != InfectionStatus.Death:
                 self.set_infection_status(person_id, InfectionStatus.Death)
                 self._deaths += 1
         return True
